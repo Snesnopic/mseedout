@@ -4,6 +4,13 @@
 #include <iostream>
 #include <fstream>
 #include <cstring>
+#include <filesystem>
+
+#ifdef _WIN32
+#include <winsock2.h>
+#else
+#include <arpa/inet.h>
+#endif
 
 namespace mseedout {
 
@@ -11,7 +18,7 @@ bool Processor::process(const std::filesystem::path& input_path, const std::file
     std::cout << "Starting optimization for " << input_path << "\n";
 
     MS3TraceList* mstl = nullptr;
-    const int ret = ms3_readtracelist(&mstl, input_path.c_str(), nullptr, 0, MSF_UNPACKDATA, 0);
+    const int ret = ms3_readtracelist(&mstl, input_path.string().c_str(), nullptr, 0, MSF_UNPACKDATA, 0);
     
     if (ret != MS_NOERROR || !mstl) {
         std::cerr << "Failed to read input trace list.\n";

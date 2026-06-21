@@ -16,11 +16,11 @@ int main(int argc, char** argv) {
     MS3TraceList* mstl1 = nullptr;
     MS3TraceList* mstl2 = nullptr;
 
-    if (ms3_readtracelist(&mstl1, file1.c_str(), nullptr, 0, MSF_UNPACKDATA, 3) != MS_NOERROR) {
+    if (ms3_readtracelist(&mstl1, file1.string().c_str(), nullptr, 0, MSF_UNPACKDATA, 3) != MS_NOERROR) {
         std::cerr << "Failed to read " << file1 << "\n";
         return EXIT_FAILURE;
     }
-    if (ms3_readtracelist(&mstl2, file2.c_str(), nullptr, 0, MSF_UNPACKDATA, 3) != MS_NOERROR) {
+    if (ms3_readtracelist(&mstl2, file2.string().c_str(), nullptr, 0, MSF_UNPACKDATA, 3) != MS_NOERROR) {
         std::cerr << "Failed to read " << file2 << "\n";
         return EXIT_FAILURE;
     }
