@@ -1,0 +1,6 @@
+cmake-build-*/
+build*/
+*.mseed
+*.log
+.idea/
+a.out
