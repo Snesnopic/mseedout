@@ -1,16 +1,21 @@
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <winsock2.h>
+#include <windows.h>
+#else
+#include <arpa/inet.h>
+#endif
+
 #include "mseedout/processor.hpp"
 #include "mseedout/dp_packer.hpp"
+#include "mseedout/mseedout.hpp"
 #include <libmseed.h>
 #include <iostream>
 #include <fstream>
 #include <cstring>
 #include <filesystem>
-
-#ifdef _WIN32
-#include <winsock2.h>
-#else
-#include <arpa/inet.h>
-#endif
 
 namespace mseedout {
 
