@@ -75,6 +75,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: recursive
 
       - name: Install Dependencies
         if: matrix.install_deps
@@ -117,6 +119,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: recursive
 
       - name: Build in VM
         uses: vmactions/freebsd-vm@v1
