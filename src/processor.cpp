@@ -65,14 +65,19 @@ bool Processor::process(const std::filesystem::path& input_path, const std::file
                     }
                 }
                 
+                if (min_total_size == SIZE_MAX) {
+                    std::cerr << "Warning: segment of " << id->sid << " contains differences that exceed the Steim-2 30-bit range and cannot be encoded. Skipping segment.\n";
+                    continue;
+                }
+
                 std::cout << "Optimal record length chosen: " << best_reclen << " (Expected size: " << min_total_size << " bytes)\n";
-                
+
                 // Pack for optimal L
                 const int max_frames = (best_reclen - header_overhead) / 64;
                 auto packed_records = DPPacker::pack_steim2(samples, seg->samplecnt, max_frames);
                 
                 int64_t current_starttime = seg->starttime;
-                const auto record_buffer = new char[best_reclen];
+                const auto record_buffer = new char[static_cast<std::size_t>(best_reclen)];
                 
                 MS3Record* msr = msr3_init(nullptr);
                 strncpy(msr->sid, id->sid, sizeof(msr->sid));
@@ -91,7 +96,7 @@ bool Processor::process(const std::filesystem::path& input_path, const std::file
                     msr->numsamples = prec.sample_count;
                     
                     memset(record_buffer, 0, static_cast<std::size_t>(best_reclen));
-                    const int header_len = msr3_pack_header2(msr, record_buffer, best_reclen, 0);
+                    const int header_len = msr3_pack_header2(msr, record_buffer, static_cast<uint32_t>(best_reclen), 0);
                     
                     if (header_len < 0) {
                         std::cerr << "Failed to pack header for record " << i << "\n";
@@ -105,11 +110,11 @@ bool Processor::process(const std::filesystem::path& input_path, const std::file
                     }
                     
                     // Patch FSDH dataoffset (byte 44) if format is MS2
-                    uint16_t offset_u16 = htons((uint16_t)dataoffset);
+                    uint16_t offset_u16 = htons(static_cast<uint16_t>(dataoffset));
                     memcpy(record_buffer + 44, &offset_u16, 2);
-                    
+
                     // Patch FSDH numsamples (bytes 30-31)
-                    uint16_t numsamples_u16 = htons((uint16_t)prec.sample_count);
+                    uint16_t numsamples_u16 = htons(static_cast<uint16_t>(prec.sample_count));
                     memcpy(record_buffer + 30, &numsamples_u16, 2);
                     
                     // Patch B1000 encoding to DE_STEIM2 (byte 52)
