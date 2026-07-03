@@ -1,13 +1,3 @@
-/**
- * @file processor.hpp
- * @brief Interfaces with libmseed and manages the optimal record search.
- * @author mseedout contributors
- * @date 2026
- *
- * Provides the top-level processing capabilities that iterate over
- * record sizes and apply DP optimization.
- */
-
 #ifndef MSEEDOUT_PROCESSOR_HPP
 #define MSEEDOUT_PROCESSOR_HPP
 

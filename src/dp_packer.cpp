@@ -33,7 +33,7 @@ void DPPacker::precompute_bit_widths(const int32_t* samples, const std::size_t c
     }
 }
 
-std::vector<std::vector<DPPacker::State>> DPPacker::run_dp(const int32_t* samples, std::size_t count, int W_max, const std::vector<uint8_t>& bit_widths) {
+std::vector<std::vector<DPPacker::State>> DPPacker::run_dp(const int32_t* samples, const std::size_t count, const int W_max, const std::vector<uint8_t>& bit_widths) {
     (void)samples;
     constexpr int INF = 1000000000;
     const std::size_t W_max_sz = static_cast<std::size_t>(W_max);
@@ -50,7 +50,7 @@ std::vector<std::vector<DPPacker::State>> DPPacker::run_dp(const int32_t* sample
         for (int r_w = 0; r_w <= W_max; ++r_w) {
             const std::size_t r_w_sz = static_cast<std::size_t>(r_w);
             if (DP[i][r_w_sz].c == INF) continue;
-            int c = DP[i][r_w_sz].c;
+            const int c = DP[i][r_w_sz].c;
 
             if (r_w < W_max) {
                 for (int k = 1; k <= 7; ++k) {
@@ -97,19 +97,19 @@ std::vector<std::vector<DPPacker::State>> DPPacker::run_dp(const int32_t* sample
     return DP;
 }
 
-int DPPacker::evaluate_cost(const int32_t* samples, std::size_t count, int max_frames_per_record) {
+int DPPacker::evaluate_cost(const int32_t* samples, const std::size_t count, const int max_frames_per_record) {
     if (count == 0) return 0;
     if (count == 1) return 1;
-    int W_max = 13 + ((max_frames_per_record - 1) * 15);
+    const int W_max = 13 + ((max_frames_per_record - 1) * 15);
     std::vector<uint8_t> bit_widths;
     precompute_bit_widths(samples, count, bit_widths);
-    auto DP = run_dp(samples, count, W_max, bit_widths);
+    const auto DP = run_dp(samples, count, W_max, bit_widths);
 
     constexpr int INF = 1000000000;
     int min_c = INF;
     for (int r_w = 1; r_w <= W_max; ++r_w) {
         if (DP[count][static_cast<std::size_t>(r_w)].c == INF) continue;
-        int total_c = DP[count][static_cast<std::size_t>(r_w)].c + 1;
+        const int total_c = DP[count][static_cast<std::size_t>(r_w)].c + 1;
         if (total_c < min_c) min_c = total_c;
     }
     return min_c;
@@ -166,7 +166,7 @@ std::vector<PackedRecord> DPPacker::pack_steim2(const int32_t* samples, std::siz
     auto get_frame_and_word = [](const int r_w) -> std::pair<int, int> {
         if (r_w == 0) return {0, 0};
         if (r_w <= 13) return {0, r_w + 2};
-        int r_w_rem = r_w - 14;
+        const int r_w_rem = r_w - 14;
         return {(r_w_rem / 15) + 1, (r_w_rem % 15) + 1};
     };
 
@@ -175,7 +175,7 @@ std::vector<PackedRecord> DPPacker::pack_steim2(const int32_t* samples, std::siz
         frame_words[static_cast<std::size_t>(w)] = htonl(val);
     };
 
-    auto set_nibble = [&](std::vector<uint8_t>& payload, int f, int w, uint8_t nibble) {
+    auto set_nibble = [&](std::vector<uint8_t>& payload, const int f, const int w, const uint8_t nibble) {
         auto* frame_words = reinterpret_cast<uint32_t*>(payload.data() + static_cast<std::size_t>(f) * 64);
         uint32_t header = ntohl(frame_words[0]);
         const int shift = 30 - (w * 2);
@@ -213,7 +213,7 @@ std::vector<PackedRecord> DPPacker::pack_steim2(const int32_t* samples, std::siz
         auto [f, w] = get_frame_and_word(target_r_w);
         uint32_t val = 0; uint8_t nibble = 0;
 
-        auto dj = [&](int j) { return static_cast<uint32_t>(d[static_cast<std::size_t>(j)]); };
+        auto dj = [&](const int j) { return static_cast<uint32_t>(d[static_cast<std::size_t>(j)]); };
         if (step.k == 7) { for (int j=0; j<7; ++j) val |= ((dj(j) & 0xFU) << static_cast<unsigned>(24 - j*4)); val |= (0x2U << 30U); nibble = 3; }
         else if (step.k == 6) { for (int j=0; j<6; ++j) val |= ((dj(j) & 0x1FU) << static_cast<unsigned>(25 - j*5)); val |= (0x1U << 30U); nibble = 3; }
         else if (step.k == 5) { for (int j=0; j<5; ++j) val |= ((dj(j) & 0x3FU) << static_cast<unsigned>(24 - j*6)); val |= (0x0U << 30U); nibble = 3; }

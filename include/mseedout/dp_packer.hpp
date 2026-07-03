@@ -1,8 +1,3 @@
-/**
- * @file dp_packer.hpp
- * @brief Dynamic Programming core for optimal Steim-2 packing.
- */
-
 #ifndef MSEEDOUT_DP_PACKER_HPP
 #define MSEEDOUT_DP_PACKER_HPP
 
@@ -17,7 +12,7 @@ struct PackedRecord {
 };
 
 /**
- * @brief Steim-2 Dynamic Programming packer for miniSEED records.
+ * @brief Steim-2 packer for miniSEED records.
  */
 class DPPacker {
 public:

@@ -74,7 +74,7 @@ jobs:
             asset_name: mseedout-darwin-arm64
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -118,7 +118,7 @@ jobs:
             release: '15.0'
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 

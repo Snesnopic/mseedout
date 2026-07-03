@@ -30,8 +30,8 @@ int main(int argc, char** argv) {
     std::vector<int32_t> samples2;
 
     if (mstl1->traces.next[0]) {
-        for (MS3TraceID *id = mstl1->traces.next[0]; id != nullptr; id = id->next[0]) {
-            for (MS3TraceSeg *seg = id->first; seg != nullptr; seg = seg->next) {
+        for (const MS3TraceID *id = mstl1->traces.next[0]; id != nullptr; id = id->next[0]) {
+            for (const MS3TraceSeg *seg = id->first; seg != nullptr; seg = seg->next) {
                 if (seg->samplecnt > 0 && seg->sampletype == 'i') {
                     const int32_t* s = static_cast<int32_t*>(seg->datasamples);
                     samples1.insert(samples1.end(), s, s + seg->samplecnt);
@@ -41,8 +41,8 @@ int main(int argc, char** argv) {
     }
 
     if (mstl2->traces.next[0]) {
-        for (MS3TraceID *id = mstl2->traces.next[0]; id != nullptr; id = id->next[0]) {
-            for (MS3TraceSeg *seg = id->first; seg != nullptr; seg = seg->next) {
+        for (const MS3TraceID *id = mstl2->traces.next[0]; id != nullptr; id = id->next[0]) {
+            for (const MS3TraceSeg *seg = id->first; seg != nullptr; seg = seg->next) {
                 std::cout << "File2 Trace: " << id->sid << " seg samples: " << seg->samplecnt << " type: " << seg->sampletype << "\n";
                 if (seg->samplecnt > 0 && seg->sampletype == 'i') {
                     const int32_t* s = static_cast<int32_t*>(seg->datasamples);

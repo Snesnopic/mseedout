@@ -16,12 +16,12 @@
 namespace mseedout {
 
 /**
- * @brief Recompresses a miniSEED file mathematically optimally.
+ * @brief Optimally recompresses a miniSEED file.
  *
  * This function parses the input miniSEED file using libmseed, extracts
- * all samples and metadata perfectly, and repacks the data using a DP algorithm
+ * all samples and metadata, and repacks the data using a DP algorithm
  * for Steim-2 packing and an exhaustive search for the optimal record padding.
- * It strictly preserves all structural metadata, format versions, and blockettes.
+ * It preserves all structural metadata, format versions and blockettes.
  *
  * @param input_path Path to the input miniSEED file.
  * @param output_path Path where the optimized miniSEED file will be saved.

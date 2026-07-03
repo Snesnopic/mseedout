@@ -4,7 +4,7 @@
 
 static void print_usage(const char* prog_name) {
     std::cerr << "Usage: " << prog_name << " <input_file.mseed> <output_file.mseed>\n";
-    std::cerr << "Mathematically optimal lossless compression of miniSEED files.\n";
+    std::cerr << "Optimal lossless compression of miniSEED files.\n";
 }
 
 int main(int argc, char** argv) {
