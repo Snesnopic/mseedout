@@ -19,8 +19,8 @@
 
 namespace mseedout {
 
-bool Processor::process(const std::filesystem::path& input_path, const std::filesystem::path& output_path) {
-    std::cout << "Starting optimization for " << input_path << "\n";
+bool Processor::process(const std::filesystem::path& input_path, const std::filesystem::path& output_path, bool verbose) {
+    if (verbose) std::cout << "Starting optimization for " << input_path << "\n";
 
     MS3TraceList* mstl = nullptr;
     const int ret = ms3_readtracelist(&mstl, input_path.string().c_str(), nullptr, 0, MSF_UNPACKDATA, 0);
@@ -70,7 +70,7 @@ bool Processor::process(const std::filesystem::path& input_path, const std::file
                     continue;
                 }
 
-                std::cout << "Optimal record length chosen: " << best_reclen << " (Expected size: " << min_total_size << " bytes)\n";
+                if (verbose) std::cout << "Optimal record length chosen: " << best_reclen << " (Expected size: " << min_total_size << " bytes)\n";
 
                 // Pack for optimal L
                 const int max_frames = (best_reclen - header_overhead) / 64;

@@ -25,9 +25,11 @@ namespace mseedout {
  *
  * @param input_path Path to the input miniSEED file.
  * @param output_path Path where the optimized miniSEED file will be saved.
+ * @param verbose If true, prints progress info to stdout. Warnings and
+ *        errors are always printed to stderr regardless of this flag.
  * @return true if successful, false otherwise.
  */
-bool recompress_mseed(const std::filesystem::path& input_path, const std::filesystem::path& output_path);
+bool recompress_mseed(const std::filesystem::path& input_path, const std::filesystem::path& output_path, bool verbose = false);
 
 } // namespace mseedout
 
