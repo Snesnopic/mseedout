@@ -1,5 +1,13 @@
 cmake_minimum_required(VERSION 3.10...4.10)
-project(mseedout VERSION 1.0.0)
+project(mseedout VERSION 1.0.1 LANGUAGES CXX)
+
+if(MSVC)
+    # force static msvc runtime linkage (/mt for release, /mtd for debug)
+    if(POLICY CMP0091)
+        cmake_policy(SET CMP0091 NEW)
+        set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    endif()
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
