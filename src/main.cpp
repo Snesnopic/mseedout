@@ -13,7 +13,13 @@ int main(int argc, char** argv) {
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
-        if (arg == "-v" || arg == "--verbose") {
+        if (arg == "--version") {
+            std::cout << MSEEDOUT_VERSION << "\n";
+            return EXIT_SUCCESS;
+        } else if (arg == "-h" || arg == "--help") {
+            print_usage(argv[0]);
+            return EXIT_SUCCESS;
+        } else if (arg == "-v" || arg == "--verbose") {
             verbose = true;
         } else if (input_path.empty()) {
             input_path = arg;

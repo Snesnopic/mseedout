@@ -41,6 +41,7 @@ target_compile_options(mseedout_lib PRIVATE -O3 ${STRICT_WARNINGS})
 add_executable(mseedout src/main.cpp)
 target_link_libraries(mseedout mseedout_lib mseed_static)
 target_compile_options(mseedout PRIVATE -O3 ${STRICT_WARNINGS})
+target_compile_definitions(mseedout PRIVATE MSEEDOUT_VERSION="${PROJECT_VERSION}")
 
 # Verification executable
 add_executable(mseedverify src/verify.cpp)
