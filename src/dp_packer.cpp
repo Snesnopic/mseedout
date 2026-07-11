@@ -103,13 +103,63 @@ int DPPacker::evaluate_cost(const int32_t* samples, const std::size_t count, con
     const int W_max = 13 + ((max_frames_per_record - 1) * 15);
     std::vector<uint8_t> bit_widths;
     precompute_bit_widths(samples, count, bit_widths);
-    const auto DP = run_dp(samples, count, W_max, bit_widths);
 
+    // transitions look at most 8 rows ahead, and no backtracking is needed here, so a rolling window replaces the full (count+1) x (W_max+1) matrix run_dp uses
     constexpr int INF = 1000000000;
+    constexpr std::size_t WINDOW = 9;
+    const std::size_t w_max_sz = static_cast<std::size_t>(W_max);
+    std::vector<std::vector<int>> window(WINDOW, std::vector<int>(w_max_sz + 1, INF));
+
+    window[1 % WINDOW][0] = 0;
+
+    for (std::size_t i = 1; i < count; ++i) {
+        std::vector<int>& cur = window[i % WINDOW];
+
+        for (int r_w = 0; r_w <= W_max; ++r_w) {
+            const int c = cur[static_cast<std::size_t>(r_w)];
+            if (c == INF || r_w >= W_max) continue;
+
+            for (int k = 1; k <= 7; ++k) {
+                int max_b = 0;
+                if (k == 1) max_b = 30;
+                else if (k == 2) max_b = 15;
+                else if (k == 3) max_b = 10;
+                else if (k == 4) max_b = 8;
+                else if (k == 5) max_b = 6;
+                else if (k == 6) max_b = 5;
+                else if (k == 7) max_b = 4;
+
+                const int samples_packed = (r_w == 0) ? (k - 1) : k;
+                const std::size_t next_i = i + static_cast<std::size_t>(samples_packed);
+                if (next_i > count) continue;
+
+                bool fits = true;
+                for (int j = 0; j < samples_packed; ++j) {
+                    if (bit_widths[i + static_cast<std::size_t>(j)] > max_b) { fits = false; break; }
+                }
+                if (!fits) continue;
+
+                const int new_r_w = r_w + 1;
+                if (new_r_w <= W_max) {
+                    int& target = window[next_i % WINDOW][static_cast<std::size_t>(new_r_w)];
+                    if (target > c) target = c;
+                }
+                if (next_i < count) {
+                    int& target = window[(next_i + 1) % WINDOW][0];
+                    if (target > c + 1) target = c + 1;
+                }
+            }
+        }
+
+        std::fill(cur.begin(), cur.end(), INF); // this bucket becomes row i + WINDOW next
+    }
+
     int min_c = INF;
+    const std::vector<int>& final_row = window[count % WINDOW];
     for (int r_w = 1; r_w <= W_max; ++r_w) {
-        if (DP[count][static_cast<std::size_t>(r_w)].c == INF) continue;
-        const int total_c = DP[count][static_cast<std::size_t>(r_w)].c + 1;
+        const int c = final_row[static_cast<std::size_t>(r_w)];
+        if (c == INF) continue;
+        const int total_c = c + 1;
         if (total_c < min_c) min_c = total_c;
     }
     return min_c;
