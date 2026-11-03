@@ -3,50 +3,37 @@
 
 #include <vector>
 #include <cstdint>
+#include <cstddef>
 
 namespace mseedout {
 
 struct PackedRecord {
-    std::vector<uint8_t> payload; // Exact multiple of 64 bytes (Steim-2 frames)
-    int sample_count{0};          // Number of samples stored in this record
+    std::vector<uint8_t> payload; // Steim-2 frames, reclen - HEADER_BYTES bytes (only the frames used if reclen is 0)
+    int sample_count{0};
+    int reclen{0}; // 0 for variable-length records (miniSEED 3)
 };
 
-/**
- * @brief Steim-2 packer for miniSEED records.
- */
+// minimum-size Steim-2 packer: greedy words and records are optimal since a sub-window of a valid word is valid
 class DPPacker {
 public:
+    static constexpr int HEADER_BYTES = 64;
+    static constexpr int MIN_RECLEN = 256;
+    static constexpr int MAX_RECLEN = 131072;
+    static constexpr int MAX_SAMPLES_PER_RECORD = 65535; // 16-bit numsamples field of miniSEED 2
+
     DPPacker() = default;
 
-    /**
-     * @brief Computes the optimal Steim-2 packing for a specific record length.
-     * 
-     * @param samples Pointer to the array of 32-bit integer samples.
-     * @param count Number of samples.
-     * @param max_frames_per_record Maximum number of 64-byte frames that fit in the payload.
-     * @return A vector of PackedRecords, each containing the formatted Steim-2 frames.
-     */
-    static std::vector<PackedRecord> pack_steim2(const int32_t* samples, size_t count, int max_frames_per_record);
+    // every record uses (max_frames_per_record + 1) * 64 bytes
+    static std::vector<PackedRecord> pack_steim2(const int32_t* samples, std::size_t count, int max_frames_per_record);
 
-    /**
-     * @brief Evaluates the total number of records needed for a specific W_max without building payload.
-     */
-    static int evaluate_cost(const int32_t* samples, size_t count, int max_frames_per_record);
+    // number of records pack_steim2 would produce
+    static int evaluate_cost(const int32_t* samples, std::size_t count, int max_frames_per_record);
 
-private:
-    static void precompute_bit_widths(const int32_t* samples, size_t count, std::vector<uint8_t>& bit_widths);
-    
-    struct State {
-        int c;        // cost (number of records)
-        int prev_i;   // backtracking: previous sample index
-        int prev_r_w; // backtracking: previous r_w
-        int k;        // backtracking: number of samples packed (0 if padded)
-    };
-    
-    // Internal generic DP runner. 
-    // Returns the full DP matrix so backtracking can be performed if requested.
-    // If backtrack is false, it can free memory or just return the minimum cost.
-    static std::vector<std::vector<State>> run_dp(const int32_t* samples, size_t count, int W_max, const std::vector<uint8_t>& bit_widths);
+    // smallest output over all power-of-two record lengths; with mixed, each record picks its own length
+    static std::vector<PackedRecord> pack_steim2_smallest(const int32_t* samples, std::size_t count, bool mixed);
+
+    // miniSEED 3: records as short as their data, at most max_frames_per_record frames, no sample limit
+    static std::vector<PackedRecord> pack_steim2_variable(const int32_t* samples, std::size_t count, int max_frames_per_record);
 };
 
 } // namespace mseedout

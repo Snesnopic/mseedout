@@ -19,9 +19,10 @@ public:
      * @param output_path Target file path.
      * @param verbose If true, prints progress info to stdout. Warnings and
      *        errors are always printed to stderr regardless of this flag.
+     * @param mixed_reclen If true, each record may use its own record length.
      * @return true if successful.
      */
-    static bool process(const std::filesystem::path& input_path, const std::filesystem::path& output_path, bool verbose = false);
+    static bool process(const std::filesystem::path& input_path, const std::filesystem::path& output_path, bool verbose = false, bool mixed_reclen = false);
 };
 
 } // namespace mseedout

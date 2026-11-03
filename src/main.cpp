@@ -3,12 +3,14 @@
 #include "mseedout/mseedout.hpp"
 
 static void print_usage(const char* prog_name) {
-    std::cerr << "Usage: " << prog_name << " [-v|--verbose] <input_file.mseed> <output_file.mseed>\n";
+    std::cerr << "Usage: " << prog_name << " [-v|--verbose] [--mixed-reclen] <input_file.mseed> <output_file.mseed>\n";
     std::cerr << "Optimal lossless compression of miniSEED files.\n";
+    std::cerr << "  --mixed-reclen  let each record pick its own record length within a trace\n";
 }
 
 int main(int argc, char** argv) {
     bool verbose = false;
+    bool mixed_reclen = false;
     std::string input_path, output_path;
 
     for (int i = 1; i < argc; ++i) {
@@ -21,6 +23,8 @@ int main(int argc, char** argv) {
             return EXIT_SUCCESS;
         } else if (arg == "-v" || arg == "--verbose") {
             verbose = true;
+        } else if (arg == "--mixed-reclen") {
+            mixed_reclen = true;
         } else if (input_path.empty()) {
             input_path = arg;
         } else if (output_path.empty()) {
@@ -37,7 +41,7 @@ int main(int argc, char** argv) {
     }
 
     try {
-        if (mseedout::recompress_mseed(input_path, output_path, verbose)) {
+        if (mseedout::recompress_mseed(input_path, output_path, verbose, mixed_reclen)) {
             if (verbose) std::cout << "Successfully compressed " << input_path << " to " << output_path << "\n";
             return EXIT_SUCCESS;
         } else {

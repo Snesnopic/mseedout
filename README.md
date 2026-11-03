@@ -1,6 +1,6 @@
 # mseedout
 
-mseedout recompresses miniSEED files to the smallest possible valid output. It uses dynamic programming to find the optimal Steim-2 word assignment and exhaustive search over valid record lengths to minimize total file size, without altering the format version or any metadata.
+mseedout recompresses miniSEED 2 and miniSEED 3 files to the smallest possible valid output. It finds the provably optimal Steim-2 packing and the record layout that minimizes total file size, in linear time, without changing any sample. The output keeps the format version of the input.
 
 ## Building
 
@@ -17,8 +17,11 @@ Requires a C++20 compiler. libmseed is included as a submodule.
 ## CLI usage
 
 ```bash
-./mseedout <input.mseed> <output.mseed>
+./mseedout [-v|--verbose] [--mixed-reclen] <input.mseed> <output.mseed>
 ```
+
+- `-v`, `--verbose`: print the chosen encoding and record layout for every trace segment.
+- `--mixed-reclen`: let each record pick its own record length within a trace (see below). miniSEED 3 records always have their own length, so the option only affects miniSEED 2.
 
 A tool for verifying correctness is also built:
 
@@ -48,25 +51,40 @@ Each record is made of 64-byte frames. Frame 0 reserves two words for X0 (first 
 W_max = 13 + (max_frames - 1) × 15
 ```
 
-### Dynamic programming
+Decoders ignore the first difference of every record (X0 is stored explicitly), so the first data word of a record spends one slot on a dummy difference. A miniSEED 2 record can also hold at most 65 535 samples, since the sample count field is 16 bits.
 
-The core problem is: given N samples and W_max data words per record, assign consecutive differences to words to minimize the total number of records. This is a shortest-path problem on a DAG.
+### Optimal packing in linear time
 
-**State:** `DP[i][r_w]` — "we have processed samples `[0..i-1]`, and have used `r_w` data words in the current open record."
+The goal is the minimum number of records for a given record length. Two properties make a greedy strategy optimal:
 
-**Initial state:** `DP[1][0] = 0 records completed`. Sample 0 is always X0 and is never encoded as a diff.
+1. **A sub-window of a valid word is a valid word.** Packing fewer differences allows a smaller k, which never has fewer bits per difference. So if a word can cover differences `u+1..v`, a word starting later can cover `x+1..v` for any `u ≤ x < v`.
+2. **Reach is therefore monotone in the starting point.** Starting later never ends earlier, for any number of words. Packing every word with as many differences as fit is optimal, and the same argument one level up makes extending every record as far as it fits optimal.
 
-**Transitions from `(i, r_w)`:** for each k ∈ {1..7}, check whether the next k differences (or k−1 if r_w=0, because the first word of a record carries a dummy zero diff required by the decoder) all fit within the bit width for k. If yes:
-- **Same record:** advance to `DP[i + samples_packed][r_w + 1]` with the same cost.
-- **New record:** complete the current record and start the next one at `DP[i + samples_packed + 1][0]` with cost + 1.
+For each segment mseedout precomputes, for every sample, the widest word that can start there (one byte per sample). Counting the records for a record length is then a single forward walk. All ten power-of-two record lengths from 256 to 131 072 bytes are evaluated, and the smallest total wins. This yields exactly the same record count as an exhaustive dynamic program, in O(n) time and memory instead of O(n · W_max).
 
-**Terminal:** the minimum of `DP[N][r_w].cost + 1` for `r_w ≥ 1` is the total number of records. `r_w = 0` is excluded because it represents a record that was opened but has no data words yet — a boundary artifact, not a valid end state.
+Differences outside the 30-bit range cannot be stored in any data word, but the jump can always be absorbed by starting a new record, whose X0 is a full 32-bit sample. Every integer series is therefore encodable.
 
-**Bit-width pre-computation:** before the DP, each difference is classified into the smallest fitting encoding. Differences outside ±536 870 911 (the 30-bit signed range) are marked as unencodable; any segment containing one cannot be Steim-2 encoded and is skipped with a warning.
+### Other encodings
 
-### Record length selection
+For each trace segment the smallest of these standard encodings is written:
 
-miniSEED record lengths must be powers of two between 256 and 131 072 bytes. For each candidate length, `evaluate_cost` runs the DP and computes the projected total output size. The length that yields the smallest output is selected. The final `pack_steim2` call then runs the DP again for that length and backtracks through the matrix to build the actual Steim-2 frame payloads.
+- **Steim-2**, packed as above. This wins for practically all seismic data.
+- **INT16** (when every sample fits) or **INT32**, which can win for high-entropy channels such as state-of-health counters. They are only tried when Steim-2 needs more than 2 or 4 bytes per sample, so normal data pays nothing for the check.
+- Float and text channels have no Steim form and are repacked in their own encoding (FLOAT32, FLOAT64, TEXT) with the record length that wastes the least space.
+
+Records that carry no samples, such as event detections or timing blockettes, are copied verbatim.
+
+### miniSEED 3
+
+miniSEED 3 input is written back as miniSEED 3. The format has no power-of-two record lengths and a 32-bit sample count, so each Steim-2 record is exactly as long as its data, up to 131 072 bytes, with no padding and no 65 535-sample limit. Start times keep their nanosecond precision and every record carries a CRC-32C, as the format requires.
+
+Flags and extra headers (such as `FDSN.Time.Quality` or timing exceptions) belong to individual records. Consecutive input records with identical flags and extra headers form a run: samples are repacked freely within a run, output records never cross a run boundary, and every output record carries its run's flags and extra headers. An identical extra header repeated over many input records may therefore appear in a different number of output records, which is how libmseed itself packs from a template. A file that mixes miniSEED 2 and 3 records is rejected.
+
+### Mixed record lengths (`--mixed-reclen`)
+
+With a single record length per segment, the last record is usually partly empty. With `--mixed-reclen` every record may use its own power-of-two length, and mseedout finds the exact minimum total size: `covered[c]` is the longest prefix of the segment encodable in `c × 256` bytes, and extending from the longest prefix is optimal because record ends are monotone in their start. A table of 64-word jumps keeps each lookup cheap.
+
+The output is only used when it is strictly smaller than the best single-length layout. Savings are typically 0.3% on long continuous files, a few percent on medium files and up to 20% on small ones. Varying record lengths are valid miniSEED, and libmseed has auto-detected the length of each record independently since at least version 2.6, which covers ObsPy, SeisComP, pyrocko and the IRIS tools. The option stays off by default for readers that might assume a fixed length.
 
 ## Using mseedout as a library
 
@@ -85,28 +103,33 @@ The public API is a single function declared in `include/mseedout/mseedout.hpp`:
 #include <mseedout/mseedout.hpp>
 
 bool ok = mseedout::recompress_mseed("input.mseed", "output.mseed");
+bool ok_mixed = mseedout::recompress_mseed("input.mseed", "output.mseed", /*verbose=*/false, /*mixed_reclen=*/true);
 ```
 
-`recompress_mseed` reads the input file with libmseed, optimally recompresses every integer-typed trace segment, and writes a valid miniSEED file to the output path. Non-integer channels (float32, float64) are silently skipped. It returns `false` on I/O errors; segments that cannot be Steim-2 encoded emit a warning to stderr and are omitted from the output.
+`recompress_mseed` reads the input file with libmseed, recompresses every trace segment and writes a file of the same miniSEED version to the output path. It returns `false`, after reporting the reason on stderr, when the input cannot be read or a segment cannot be reproduced exactly, so that callers can keep the original file.
 
 ### Lower-level access
 
-If you need direct access to the packer (e.g. to integrate the DP into a custom miniSEED writer), `DPPacker` is declared in `include/mseedout/dp_packer.hpp`:
+If you need direct access to the packer (e.g. to integrate it into a custom miniSEED writer), `DPPacker` is declared in `include/mseedout/dp_packer.hpp`:
 
 ```cpp
 #include <mseedout/dp_packer.hpp>
 
-// Estimate the number of records needed for a given record length
-// without building the payload — used to pick the optimal length.
-int max_frames = (record_length - 64) / 64;
-int n_records = mseedout::DPPacker::evaluate_cost(samples, count, max_frames);
+// smallest Steim-2 encoding over all record lengths
+auto records = mseedout::DPPacker::pack_steim2_smallest(samples, count, /*mixed=*/false);
 
-// Pack and retrieve the raw Steim-2 frame payloads.
-auto records = mseedout::DPPacker::pack_steim2(samples, count, max_frames);
+// miniSEED 3: records only as long as their data, at most max_frames frames each
+auto variable = mseedout::DPPacker::pack_steim2_variable(samples, count, max_frames);
+
+// or a fixed record length: max_frames = (record_length - 64) / 64
+int n_records = mseedout::DPPacker::evaluate_cost(samples, count, max_frames);
+auto fixed = mseedout::DPPacker::pack_steim2(samples, count, max_frames);
+
 for (const auto& rec : records) {
-    // rec.payload      — vector<uint8_t>, multiple of 64 bytes (Steim-2 frames)
+    // rec.payload      — vector<uint8_t>, Steim-2 frames filling rec.reclen - 64 bytes
     // rec.sample_count — number of samples in this record (including X0)
+    // rec.reclen       — record length this payload belongs to
 }
 ```
 
-`max_frames` is `(record_length - 64) / 64`, where 64 bytes is the fixed miniSEED v2 header overhead. The payload returned by `pack_steim2` can be copied directly after the record header; the caller is responsible for writing the miniSEED fixed header and blockettes.
+The payload is meant to follow a 64-byte miniSEED 2 header; the caller is responsible for writing the fixed header and blockettes.
