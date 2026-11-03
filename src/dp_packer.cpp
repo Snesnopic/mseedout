@@ -10,6 +10,8 @@
 #endif
 #include <winsock2.h>
 #include <windows.h>
+#undef min
+#undef max
 #else
 #include <arpa/inet.h>
 #endif
