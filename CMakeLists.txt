@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10...4.10)
-project(mseedout VERSION 1.1.0 LANGUAGES CXX)
+project(mseedout VERSION 1.2.0 LANGUAGES CXX)
 
 if(MSVC)
     # force static msvc runtime linkage (/mt for release, /mtd for debug)
