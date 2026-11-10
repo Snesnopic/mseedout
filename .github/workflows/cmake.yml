@@ -69,7 +69,7 @@ jobs:
             asset_name: mseedout-darwin-x64
 
           - name: macOS ARM64
-            os: macos-14
+            os: macos-15
             arch: arm64
             asset_name: mseedout-darwin-arm64
 
