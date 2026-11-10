@@ -36,9 +36,11 @@ uint8_t width_class(const int64_t d) {
     return OVERFLOW_BITS; // only representable as the X0 of a new record
 }
 
-int words_for_frames(const int frames) { return 13 + ((frames - 1) * 15); }
+constexpr uint32_t INFEASIBLE = UINT32_MAX;
 
-int frames_for_reclen(const int reclen) { return (reclen - DPPacker::HEADER_BYTES) / 64; }
+int words_for_frames(const int frames) { return frames < 1 ? 0 : 13 + ((frames - 1) * 15); }
+
+int frames_for(const int reclen, const int header_bytes) { return (reclen - header_bytes) / 64; }
 
 constexpr std::array<int, NUM_RECLENS> RECLENS = {256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072};
 static_assert(RECLENS.front() == DPPacker::MIN_RECLEN && RECLENS.back() == DPPacker::MAX_RECLEN, "mixed_plan counts in MIN_RECLEN units of 2^i");
@@ -48,8 +50,9 @@ int reclen_at(const int i) { return RECLENS[static_cast<std::size_t>(i)]; }
 // nodes are sample indices: being at node t means samples up to t are covered by the current record
 class Planner {
 public:
-    Planner(const int32_t* samples, const std::size_t count, const uint32_t max_samples)
-        : s_(samples), n_(static_cast<uint32_t>(count)), max_samples_(max_samples) {
+    // records may only start at multiples of grid, where the sample time is exactly representable
+    Planner(const int32_t* samples, const std::size_t count, const uint32_t max_samples, const uint32_t grid)
+        : s_(samples), n_(static_cast<uint32_t>(count)), max_samples_(max_samples), grid_(std::max<uint32_t>(grid, 1)) {
         if (count >= UINT32_MAX) throw std::length_error("segment too long");
         bw_.assign(n_, 0);
         for (uint32_t t = 1; t < n_; ++t) bw_[t] = width_class(static_cast<int64_t>(s_[t]) - s_[t - 1]);
@@ -111,8 +114,15 @@ public:
                 x = y;
                 ++used;
             }
-            out[i] = x;
+            out[i] = snap(a, x);
         }
+    }
+
+    // the next record must start on the grid: shorten to the last allowed end, unless at the end of the samples
+    uint32_t snap(const uint32_t a, const uint32_t e) const {
+        if (static_cast<uint64_t>(e) + 1 >= n_) return e;
+        const uint64_t next = ((static_cast<uint64_t>(e) + 1) / grid_) * grid_;
+        return next <= a ? INFEASIBLE : static_cast<uint32_t>(next - 1);
     }
 
     uint32_t record_end(const uint32_t a, const int words) const {
@@ -191,6 +201,7 @@ private:
     const int32_t* s_;
     uint32_t n_;
     uint32_t max_samples_;
+    uint32_t grid_;
     std::vector<uint8_t> bw_;   // bit class of the difference ending at t
     std::vector<uint8_t> kfar_; // differences packed by the widest word starting at node t (0: record must end here)
     std::vector<uint32_t> jump_; // node reached after JUMP_WORDS greedy words
@@ -202,11 +213,17 @@ struct Span {
     int reclen;
 };
 
+// empty when the grid leaves no valid record end
 std::vector<Span> fixed_plan(const Planner& p, const int frames, const int reclen) {
     std::vector<Span> plan;
     const int words = words_for_frames(frames);
+    if (words < 1) return plan;
     for (uint32_t a = 0; a < p.size();) {
         const uint32_t b = p.record_end(a, words);
+        if (b == INFEASIBLE) {
+            plan.clear();
+            return plan;
+        }
         plan.push_back({a, b, reclen});
         a = b + 1;
     }
@@ -216,15 +233,20 @@ std::vector<Span> fixed_plan(const Planner& p, const int frames, const int recle
 std::size_t fixed_records(const Planner& p, const int frames) {
     std::size_t records = 0;
     const int words = words_for_frames(frames);
-    for (uint32_t a = 0; a < p.size(); ++records) a = p.record_end(a, words) + 1;
+    if (words < 1) return SIZE_MAX;
+    for (uint32_t a = 0; a < p.size(); ++records) {
+        const uint32_t b = p.record_end(a, words);
+        if (b == INFEASIBLE) return SIZE_MAX;
+        a = b + 1;
+    }
     return records;
 }
 
 // exact minimum over per-record lengths: covered[c] is the longest prefix encodable in c * MIN_RECLEN bytes
-std::vector<Span> mixed_plan(Planner& p, const std::size_t budget_units) {
+std::vector<Span> mixed_plan(Planner& p, const std::size_t budget_units, const int header_bytes) {
     p.build_jumps();
     std::array<int, NUM_RECLENS> words{};
-    for (int i = 0; i < NUM_RECLENS; ++i) words[static_cast<std::size_t>(i)] = words_for_frames(frames_for_reclen(reclen_at(i)));
+    for (int i = 0; i < NUM_RECLENS; ++i) words[static_cast<std::size_t>(i)] = std::max(1, words_for_frames(frames_for(reclen_at(i), header_bytes)));
 
     const uint32_t n = p.size();
     std::vector<uint32_t> covered{0};
@@ -241,9 +263,11 @@ std::vector<Span> mixed_plan(Planner& p, const std::size_t budget_units) {
         for (int i = 0; i < NUM_RECLENS; ++i) {
             const std::size_t units = std::size_t{1} << static_cast<unsigned>(i);
             if (units > c) break;
+            if (words_for_frames(frames_for(reclen_at(i), header_bytes)) < 1) continue;
             const std::size_t from = c - units;
-            const uint32_t e = ends[ends_of[from]][static_cast<std::size_t>(i)] + 1;
-            if (e > best) { best = e; pick = static_cast<int8_t>(i); }
+            const uint32_t end = ends[ends_of[from]][static_cast<std::size_t>(i)];
+            if (end == INFEASIBLE) continue;
+            if (end + 1 > best) { best = end + 1; pick = static_cast<int8_t>(i); }
         }
         covered.push_back(best);
         choice.push_back(pick);
@@ -268,10 +292,10 @@ std::vector<Span> mixed_plan(Planner& p, const std::size_t budget_units) {
     return plan;
 }
 
-std::vector<PackedRecord> emit_plan(const Planner& p, const std::vector<Span>& plan) {
+std::vector<PackedRecord> emit_plan(const Planner& p, const std::vector<Span>& plan, const int header_bytes) {
     std::vector<PackedRecord> records;
     records.reserve(plan.size());
-    for (const Span& sp : plan) records.push_back(p.emit(sp.a, sp.b, frames_for_reclen(sp.reclen), sp.reclen, false));
+    for (const Span& sp : plan) records.push_back(p.emit(sp.a, sp.b, frames_for(sp.reclen, header_bytes), sp.reclen, false));
     return records;
 }
 
@@ -279,38 +303,43 @@ std::vector<PackedRecord> emit_plan(const Planner& p, const std::vector<Span>& p
 
 std::vector<PackedRecord> DPPacker::pack_steim2(const int32_t* samples, const std::size_t count, const int max_frames_per_record) {
     if (count == 0) return {};
-    const Planner p(samples, count, MAX_SAMPLES_PER_RECORD);
-    return emit_plan(p, fixed_plan(p, max_frames_per_record, (max_frames_per_record + 1) * 64));
+    const Planner p(samples, count, MAX_SAMPLES_PER_RECORD, 1);
+    return emit_plan(p, fixed_plan(p, max_frames_per_record, (max_frames_per_record + 1) * 64), HEADER_BYTES);
 }
 
 int DPPacker::evaluate_cost(const int32_t* samples, const std::size_t count, const int max_frames_per_record) {
     if (count == 0) return 0;
-    const Planner p(samples, count, MAX_SAMPLES_PER_RECORD);
+    const Planner p(samples, count, MAX_SAMPLES_PER_RECORD, 1);
     return static_cast<int>(fixed_records(p, max_frames_per_record));
 }
 
-std::vector<PackedRecord> DPPacker::pack_steim2_smallest(const int32_t* samples, const std::size_t count, const bool mixed) {
+std::vector<PackedRecord> DPPacker::pack_steim2_smallest(const int32_t* samples, const std::size_t count, const bool mixed,
+                                                         const int header_bytes, const uint32_t grid) {
     if (count == 0) return {};
-    Planner p(samples, count, MAX_SAMPLES_PER_RECORD);
+    Planner p(samples, count, MAX_SAMPLES_PER_RECORD, grid);
 
-    int best_reclen = MIN_RECLEN;
+    int best_reclen = 0;
     std::size_t best_bytes = SIZE_MAX;
     for (int i = 0; i < NUM_RECLENS; ++i) {
-        const std::size_t bytes = fixed_records(p, frames_for_reclen(reclen_at(i))) * static_cast<std::size_t>(reclen_at(i));
+        const std::size_t records = fixed_records(p, frames_for(reclen_at(i), header_bytes));
+        if (records == SIZE_MAX) continue;
+        const std::size_t bytes = records * static_cast<std::size_t>(reclen_at(i));
         if (bytes < best_bytes) { best_bytes = bytes; best_reclen = reclen_at(i); }
     }
+    if (best_reclen == 0) return {};
 
     if (mixed) {
         // strictly smaller only: a uniform record length is the more conservative layout
-        const std::vector<Span> plan = mixed_plan(p, (best_bytes / MIN_RECLEN) - 1);
-        if (!plan.empty()) return emit_plan(p, plan);
+        const std::vector<Span> plan = mixed_plan(p, (best_bytes / MIN_RECLEN) - 1, header_bytes);
+        if (!plan.empty()) return emit_plan(p, plan, header_bytes);
     }
-    return emit_plan(p, fixed_plan(p, frames_for_reclen(best_reclen), best_reclen));
+    return emit_plan(p, fixed_plan(p, frames_for(best_reclen, header_bytes), best_reclen), header_bytes);
 }
 
-std::vector<PackedRecord> DPPacker::pack_steim2_variable(const int32_t* samples, const std::size_t count, const int max_frames_per_record) {
+std::vector<PackedRecord> DPPacker::pack_steim2_variable(const int32_t* samples, const std::size_t count, const int max_frames_per_record,
+                                                         const uint32_t grid) {
     if (count == 0) return {};
-    const Planner p(samples, count, UINT32_MAX);
+    const Planner p(samples, count, UINT32_MAX, grid);
     std::vector<PackedRecord> records;
     for (const Span& sp : fixed_plan(p, max_frames_per_record, 0)) records.push_back(p.emit(sp.a, sp.b, max_frames_per_record, 0, true));
     return records;

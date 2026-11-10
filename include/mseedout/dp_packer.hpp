@@ -8,7 +8,7 @@
 namespace mseedout {
 
 struct PackedRecord {
-    std::vector<uint8_t> payload; // Steim-2 frames, reclen - HEADER_BYTES bytes (only the frames used if reclen is 0)
+    std::vector<uint8_t> payload; // Steim-2 frames filling reclen minus the header (only the frames used if reclen is 0)
     int sample_count{0};
     int reclen{0}; // 0 for variable-length records (miniSEED 3)
 };
@@ -29,11 +29,13 @@ public:
     // number of records pack_steim2 would produce
     static int evaluate_cost(const int32_t* samples, std::size_t count, int max_frames_per_record);
 
-    // smallest output over all power-of-two record lengths; with mixed, each record picks its own length
-    static std::vector<PackedRecord> pack_steim2_smallest(const int32_t* samples, std::size_t count, bool mixed);
+    // smallest layout over power-of-two record lengths (mixed: per record) with data at header_bytes and record starts on multiples of grid; empty if none fits
+    static std::vector<PackedRecord> pack_steim2_smallest(const int32_t* samples, std::size_t count, bool mixed,
+                                                          int header_bytes = HEADER_BYTES, uint32_t grid = 1);
 
     // miniSEED 3: records as short as their data, at most max_frames_per_record frames, no sample limit
-    static std::vector<PackedRecord> pack_steim2_variable(const int32_t* samples, std::size_t count, int max_frames_per_record);
+    static std::vector<PackedRecord> pack_steim2_variable(const int32_t* samples, std::size_t count, int max_frames_per_record,
+                                                          uint32_t grid = 1);
 };
 
 } // namespace mseedout
