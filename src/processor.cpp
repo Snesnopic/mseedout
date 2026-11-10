@@ -2,6 +2,10 @@
 #include "mseedout/dp_packer.hpp"
 #include "mseedout/mseedout.hpp"
 #include <libmseed.h>
+#ifdef _WIN32
+#undef min // libmseed.h includes windows.h
+#undef max
+#endif
 #include <algorithm>
 #include <bit>
 #include <cmath>
