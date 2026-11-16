@@ -63,14 +63,18 @@ jobs:
             install_deps: sudo apt-get update && sudo apt-get install -y g++-multilib
             asset_name: mseedout-linux-x86
 
+          # pinned so the minimum macOS doesn't follow the runner image:
+          # 10.15 is where std::filesystem starts, 11.0 is the first macOS on Apple Silicon
           - name: macOS Intel
             os: macos-15-intel
             arch: x64
+            cmake_args: -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15
             asset_name: mseedout-darwin-x64
 
           - name: macOS ARM64
             os: macos-15
             arch: arm64
+            cmake_args: -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
             asset_name: mseedout-darwin-arm64
 
     steps:
